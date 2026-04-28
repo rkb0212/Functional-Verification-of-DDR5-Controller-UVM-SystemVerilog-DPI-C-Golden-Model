@@ -26,13 +26,6 @@ class ddr5_req_txn extends uvm_sequence_item;
   constraint c_bg   { bg   inside {[0:BANK_GROUPS-1]}; }
   constraint c_rank { rank inside {[0:RANKS-1]}; }
 
- /* constraint c_addr_pack {
-    addr[COL_W-1:0] == col;
-    addr[COL_W +: $clog2(BANKS_PER_GROUP)] == bank;
-    addr[COL_W + $clog2(BANKS_PER_GROUP) +: $clog2(BANK_GROUPS)] == bg;
-    addr[COL_W + $clog2(BANKS_PER_GROUP) + $clog2(BANK_GROUPS) +: $clog2(RANKS)] == rank;
-    addr[ADDR_W-1 -: ROW_W] == row;
-  } */
 constraint c_addr_pack {
   addr[COL_W-1:0] == col;
   addr[COL_W +: $clog2(BANKS_PER_GROUP)] == bank;
