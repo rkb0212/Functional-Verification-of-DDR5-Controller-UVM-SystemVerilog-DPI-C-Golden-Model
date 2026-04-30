@@ -1,4 +1,4 @@
-# Functional Verification of DDR5 Controller
+# Functional Verification of DDR5 Controller with UVM + DPI-C Golden model
 ### UVM · SystemVerilog · EDA Playground · Aldec Riviera-PRO
 
 ## Overview
@@ -12,13 +12,19 @@ The verification goal was to prove three things:
 - **Safety** — no timing constraint is ever violated
 - **Correctness** — every read returns the data from the most recent write to that address
 - **Completeness** — the controller reaches every meaningful protocol state that JEDEC defines
+- 
+## What’s New (DPI-C Integration)
 
+- Integrated a C-based golden reference model using SystemVerilog DPI-C
+- Enabled cycle-accurate comparison between DUT and reference model
+- Enhanced scoreboard to validate DUT outputs against golden model outputs
+- Improved bug detection capability for protocol and data mismatches
 ---
 
 ## Repository Structure
 
 .
-├── ddr5_controller_DUT.sv    # DUT: cycle-accurate DDR5 controller model
+├── design.sv    # DUT: cycle-accurate DDR5 controller model
 ├── ddr5_dut_if.sv            # Interface with driver and monitor clocking blocks
 ├── ddr5_tb_params_pkg.sv     # Global timing parameters and address-field widths
 ├── ddr5_tb_utils_pkg.sv      # Helper functions: address packing, burst data generation
@@ -32,7 +38,9 @@ The verification goal was to prove three things:
 ├── agent.sv                  # UVM agent
 ├── env.sv                    # UVM environment
 ├── tests.sv                  # All test classes + regression test
-├── tb_top.sv                 # Testbench top: DUT + interface + UVM kickoff
+├── testbench.sv                 # Testbench top: DUT + interface + UVM kickoff
+├── ddr5_dpi_model.h
+├──ddr5_dpi_model.cpp
 └── waveform_DDR5.png         # Captured waveform screenshot
 
 ---
@@ -143,15 +151,15 @@ Total: 16 banks (2 ranks × 4 BGs × 4 banks per BG)
 │  │  │  │    MONITOR       │   │  │  │ Checker  │  │  │  │
 │  │  │  │ (3 parallel      │   │  │  └──────────┘  │  │  │
 │  │  │  │  threads)        │   │  └────────────────┘  │  │
-│  │  │  └──────────────────┘   │  ┌────────────────┐  │  │
-│  │  └─────────────────────────┘  │   COVERAGE     │  │  │
-│  │                               │  (13 groups)   │  │  │
-│  │                               └────────────────┘  │  │
-│  └───────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                           │
-                   ┌───────▼────────┐
-                   │   ddr5_dut_if  │
+│  │  │  └─|────────────────┘   │  ┌────────────────┐  │  │
+│  │  └────|────────────────────┘  │   COVERAGE     │  │  │
+│  │       |                       │  (13 groups)   │  │  │
+│  │       |                       └────────────────┘  │  │
+│  └───────|───────────────────────────────────────────┘  │
+└──────────|──────────────────────────────────────────────┘
+      _____|____           │
+     |DPI-model |  ┌───────▼────────┐
+      __________   │   ddr5_dut_if  │
                    └───────┬────────┘
                            │
                    ┌───────▼────────┐
