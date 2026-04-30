@@ -27,9 +27,8 @@ The verification goal remains the same across all three layers:
 
 ```
 .
-├── design.sv                  # Top-level design wrapper (includes DUT)
+├── design.sv                  # Top-level design, DUT: cycle-accurate DDR5 controller model
 ├── testbench.sv               # Top-level TB (UVM kickoff, DUT instantiation)
-├── ddr5_controller_DUT.sv     # DUT: cycle-accurate DDR5 controller model
 ├── ddr5_dut_if.sv             # Interface with driver and monitor clocking blocks
 ├── ddr5_tb_params_pkg.sv      # Global timing parameters and address-field widths
 ├── ddr5_tb_utils_pkg.sv       # Helper functions: address packing, burst data generation
