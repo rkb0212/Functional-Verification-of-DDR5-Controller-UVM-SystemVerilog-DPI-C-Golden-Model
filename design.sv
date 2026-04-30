@@ -22,17 +22,17 @@ module ddr5_controller_dut #(
   parameter int tRAS              = 8,   // min row-active time
   parameter int tRP               = 4,   // precharge time
   parameter int tRC               = 12,  // row-cycle time  (should be >= tRAS+tRP)
-  parameter int tWTR              = 4,   // write→read turnaround  [FIX-1]
+  parameter int tWTR              = 4,   // write→read turnaround  
   parameter int CL                = 4,   // CAS (read) latency
   parameter int tRFC              = 16,  // refresh cycle time
   parameter int tRAS_MAX          = 64,
   // -----------------------------------------------------------------------
-  // NEW timing parameters 
+  // NEW timing parameters
   // -----------------------------------------------------------------------
-  parameter int tCCD_L            = 8,   // column-to-column, same bank group
+  parameter int tCCD_L            = 8,   //  column-to-column, same bank group
   parameter int tCCD_S            = 4,   //  column-to-column, different bank group
   parameter int tCWL              = 4,   //  CAS write latency
-  parameter int tRTW              = 6,   //  read→write turnaround (bus direction flip)
+  parameter int tRTW              = 6,   // read→write turnaround (bus direction flip)
   
   parameter int MEM_DEPTH         = 4096
 )(
@@ -82,12 +82,6 @@ module ddr5_controller_dut #(
   // -----------------------------------------------------------------------
   // Compile-time check: DDR5 mandates BL16
   // -----------------------------------------------------------------------
-  // $error() is evaluated at elaboration time.
-  // This will produce a compile error if BURST_LEN != 16.
-  // The single-beat memory model is an intentional DUT abstraction:
-  // BL16 serialisation on a physical DQ bus is not modeled; each access
-  // is represented as one DATA_W-wide word with CL / tCWL latency only.
-  // -----------------------------------------------------------------------
     initial begin
     if (BURST_LEN !== 16)
         $fatal(1, "DDR5 mandates BURST_LEN=16; got %0d", BURST_LEN);
@@ -131,7 +125,7 @@ module ddr5_controller_dut #(
     ST_RCD_WAIT   = 4'd3,
     ST_COL_ISSUE  = 4'd4,
     ST_READ_WAIT  = 4'd5,
-    ST_WRITE_WAIT = 4'd6,   //  new state for tCWL
+    ST_WRITE_WAIT = 4'd6,   
     ST_REF_ISSUE  = 4'd7,
     ST_REF_WAIT   = 4'd8
   } state_t;
@@ -153,19 +147,20 @@ module ddr5_controller_dut #(
   bank_state_t bank_state [BANKS_TOTAL];
 
   // -----------------------------------------------------------------------
+  // Per-bank-group: last column command timestamp tracking  
   // tCCD counter: counts down from tCCD_L/S after each COL command.
-  // When non-zero, further COL commands to ANY bank in this BG are blocked.
   // -----------------------------------------------------------------------
   logic [15:0] bg_ccd_ctr [BANK_GROUPS];   // per BG cooldown after col command
 
   // -----------------------------------------------------------------------
-  // Module-level RTW counter 
-  // Counts down after a READ is issued; WRITE blocked while non-zero.
+  // Module-level RTW counter  
   // -----------------------------------------------------------------------
   logic [15:0] trtw_ctr;
 
    // -----------------------------------------------------------------------
   // Memory and misc
+  // Don't index backing memory using only low address bits, that causes aliasing between different rows/banks/ranks.
+  // Instead, use a flattened DDR location index: {rank, bg, bank, row, col}
   // -----------------------------------------------------------------------
   localparam int FULL_MEM_DEPTH =
       RANKS * BANK_GROUPS * BANKS_PER_GROUP * (1 << ROW_W) * (1 << COL_W);
@@ -197,8 +192,6 @@ logic [FULL_MEM_IDX_W-1:0] latched_mem_idx;
   logic        refresh_pending;
   logic [DATA_W*BURST_LEN-1:0] read_data_q;
 
-  // all_precharged declared at module level [FIX from previous review]
- // logic all_precharged;
   logic forced_precharge;
 
   // -----------------------------------------------------------------------
@@ -253,8 +246,7 @@ logic [FULL_MEM_IDX_W-1:0] latched_mem_idx;
   endfunction
 
   function automatic logic bank_idle_for_act(input int unsigned idx);
-    // FIX-1 note: trc_ctr and trp_ctr are now loaded with tXXX+1,
-    // so == 0 check gives exactly the right guard.
+
     bank_idle_for_act = (!bank_state[idx].open)
                       && (bank_state[idx].trp_ctr == 0)
                       && (bank_state[idx].trc_ctr == 0);
@@ -264,8 +256,6 @@ logic [FULL_MEM_IDX_W-1:0] latched_mem_idx;
     can_precharge = bank_state[idx].open && (bank_state[idx].tras_ctr == 0);
   endfunction
 
-  // READ  : bank open, tRCD expired, tWTR (write→read) expired, CCD ok, tRTW not blocking write side
-  // WRITE : bank open, tRCD expired, tRTW (read→write) expired, CCD ok
   function automatic logic can_readwrite(
     input int unsigned     idx,
     input logic            is_read,
@@ -417,14 +407,14 @@ endfunction
       end
 
       // ------------------------------------------------------------------
-      // Decrement per-BG CCD counters  
+      // Decrement per-BG CCD counters 
       // ------------------------------------------------------------------
       for (int g = 0; g < BANK_GROUPS; g++) begin
         if (bg_ccd_ctr[g] != 0) bg_ccd_ctr[g] <= bg_ccd_ctr[g] - 1;
       end
 
       // ------------------------------------------------------------------
-      // Decrement RTW counter  
+      // Decrement RTW counter 
       // ------------------------------------------------------------------
       if (trtw_ctr != 0) trtw_ctr <= trtw_ctr - 1;
 
@@ -516,6 +506,8 @@ endfunction
             cmd_rank  <= latched_rank;
             cmd_bg    <= latched_bg;
             cmd_bank  <= latched_bank;
+            cmd_row <= bank_state[target_bank_idx].open_row;
+			cmd_col <= '0;
 
             for (int c = 0; c < (1<<COL_W); c++) begin
             if (rowbuf_valid[target_bank_idx][c]) begin
@@ -558,7 +550,6 @@ endfunction
             bank_state[target_bank_idx].open     <= 1'b1;
             bank_state[target_bank_idx].open_row <= latched_row;
 // Counters are loaded with tXXX and decremented once per cycle.
-// The guarded command becomes legal only when the counter reaches 0.
             bank_state[target_bank_idx].trcd_ctr <= 16'(tRCD);
             bank_state[target_bank_idx].tras_ctr <= 16'(tRAS);
             bank_state[target_bank_idx].trc_ctr  <= 16'(tRC);
@@ -589,12 +580,7 @@ endfunction
             cmd_bank  <= latched_bank;
             cmd_col   <= latched_col;
 
-            //start the CCD counter for this bank group.
-            // All BGs use the same tCCD_L for same-BG and tCCD_S for different
-            // BGs. We arm tCCD_L (the stricter) on the issuing BG; the
-            // per-BG counter for OTHER BGs is armed with tCCD_S in the
-            // second loop below.
-            bg_ccd_ctr[latched_bg] <= 16'(tCCD_L);  // 
+            bg_ccd_ctr[latched_bg] <= 16'(tCCD_L);  
             for (int g = 0; g < BANK_GROUPS; g++) begin
               if (g != int'(latched_bg))
                 // Only tighten if not already counting a stricter value
@@ -603,7 +589,7 @@ endfunction
             end
 
             if (latched_write) begin
-              //start tCWL wait before committing write data
+              // start tCWL wait before committing write data
               wait_ctr <= 16'(tCWL - 1);  // -1 because first decrement in ST_WRITE_WAIT
               state    <= ST_WRITE_WAIT;
             end else begin
@@ -612,10 +598,10 @@ endfunction
               read_data_q <= rowbuf_data[target_bank_idx][latched_col];
             else
               read_data_q <= mem_array[latched_mem_idx];
-              wait_ctr    <= 16'(CL - 1);   // CL-1 because ST_READ_WAIT decrements first
+              wait_ctr    <= 16'(CL - 1);   
               state       <= ST_READ_WAIT;
 
-              // stsrt read→write turnaround counter
+              // read→write turnaround counter
               trtw_ctr <= 16'(tRTW);
             end
           end
@@ -656,54 +642,65 @@ endfunction
 
         // -----------------------------------------------------------------
         // REF_ISSUE: drain all open banks then issue REF
-        // every inline PRE now pulses cmd_valid
         // -----------------------------------------------------------------
-        ST_REF_ISSUE: begin
-          logic banks_ready;
-          banks_ready = 1'b1;   // blocking assign to module-level signal
+ST_REF_ISSUE: begin
+  logic banks_ready;
 
-          for (int k = 0; k < BANKS_TOTAL; k++) begin
-            if (bank_state[k].open || (bank_state[k].trp_ctr != 0) || (bank_state[k].tras_ctr != 0))
-              banks_ready = 1'b0;
-          end
+  cmd_valid  <= 1'b0;
+  cmd_code   <= CMD_NOP;
+  banks_ready = 1'b1;
 
-          if (banks_ready) begin
-            cmd_valid <= 1'b1;
-            cmd_code  <= CMD_REF;
-            wait_ctr  <= 16'(tRFC - 1);   // FIX-1
-            state     <= ST_REF_WAIT;
-          end else begin
-            // assert cmd_valid for every PRE issued here
-            // only one cmd_valid per cycle is possible; if multiple banks
-            // qualify, they are issued on successive cycles (FSM loops back).
-            // A production controller would issue them in parallel per-bank.
-            for (int k = 0; k < BANKS_TOTAL; k++) begin
-              if (bank_state[k].open && (bank_state[k].tras_ctr == 0)) begin
-                cmd_valid              <= 1'b1;         // FIX-5
-                cmd_code               <= CMD_PRE;       // FIX-5
+  for (int k = 0; k < BANKS_TOTAL; k++) begin
+    if (bank_state[k].open) begin
+      banks_ready = 1'b0;
 
-            for (int c = 0; c < (1<<COL_W); c++) begin
-            if (rowbuf_valid[k][c]) begin
-                mem_array[flatten_mem_index(
-                  bank_to_rank(k),
-                  bank_to_bg(k),
-                  bank_to_bank(k),
-                  bank_state[k].open_row,
-                  c[COL_W-1:0]
-                )] <= rowbuf_data[k][c];
+      if (bank_state[k].tras_ctr == 0) begin
+        cmd_valid <= 1'b1;
+        cmd_code  <= CMD_PRE;
 
-                rowbuf_valid[k][c] <= 1'b0;
-            end
-            end
+        cmd_rank <= bank_to_rank(k);
+        cmd_bg   <= bank_to_bg(k);
+        cmd_bank <= bank_to_bank(k);
+        cmd_row  <= bank_state[k].open_row;
+        cmd_col  <= '0;
 
-                bank_state[k].open    <= 1'b0;
-                bank_state[k].trp_ctr <= 16'(tRP); 
-                break;  // issue at most one PRE per cycle 
-              end
-            end
+        for (int c = 0; c < (1 << COL_W); c++) begin
+          if (rowbuf_valid[k][c]) begin
+            mem_array[flatten_mem_index(
+              bank_to_rank(k),
+              bank_to_bg(k),
+              bank_to_bank(k),
+              bank_state[k].open_row,
+              c[COL_W-1:0]
+            )] <= rowbuf_data[k][c];
+
+            rowbuf_valid[k][c] <= 1'b0;
           end
         end
 
+        bank_state[k].open    <= 1'b0;
+        bank_state[k].trp_ctr <= 16'(tRP);
+      end
+
+      break;
+    end
+  end
+
+  if (banks_ready) begin
+    cmd_valid <= 1'b1;
+    cmd_code  <= CMD_REF;
+
+    cmd_rank <= '0;
+    cmd_bg   <= '0;
+    cmd_bank <= '0;
+    cmd_row  <= '0;
+    cmd_col  <= '0;
+
+    refresh_pending <= 1'b0;
+    wait_ctr        <= 16'(tRFC - 1);
+    state           <= ST_REF_WAIT;
+  end
+end
         // -----------------------------------------------------------------
         // REF_WAIT: wait tRFC then resume normal traffic
         // -----------------------------------------------------------------
