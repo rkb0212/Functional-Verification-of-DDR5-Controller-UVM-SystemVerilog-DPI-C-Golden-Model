@@ -2,35 +2,14 @@
 `include "uvm_macros.svh"
 import uvm_pkg::*;
 
-`include "ddr5_tb_params_pkg.sv"
-`include "ddr5_tb_utils_pkg.sv"
+`include "ddr5_tb_params_pkg.sv"   // DDR5_PARAMETERS(ADDRW, ROW,COL,BG,BANK,etc)
+`include "ddr5_tb_utils_pkg.sv"    //HELPER FUNCTIONS
 `include "ddr5_dut_if.sv"
-`include "ddr5_tb_pkg.sv"
+`include "ddr5_tb_pkg.sv"    //ALL COMPONENTS(SEQ TO SCOREBOARD)
 
 import ddr5_tb_params_pkg::*;
 import ddr5_tb_utils_pkg::*;
 import ddr5_tb_pkg::*;
-
-// =============================================================================
-// DDR5 Controller DUT — Updated UVM Testbench (Riviera-safe)
-// =============================================================================
-// What this TB does:
-//   1) Matches current DUT interface:
-//        - req_wdata/rsp_rdata are DATA_W*BURST_LEN wide (512 bits)
-//   2) Generates BL16 burst payloads for writes
-//   3) Logs WRITEs explicitly in scoreboard so writes show in transcript
-//   4) Tracks expected read data by FULL ADDRESS (not only mem_idx)
-//      to match current DUT row-buffer behavior more closely
-//   5) Monitors command stream and checks simple timing relationships:
-//        - same-BG tCCD_L
-//        - tWTR
-//        - tRTW
-//
-// Not included yet:
-//   - functional coverage
-//   - assertions / SVA
-//   - advanced protocol model
-// =============================================================================
 
 // =============================================================================
 // TOP
